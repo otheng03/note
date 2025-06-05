@@ -22,7 +22,6 @@
 - ctrl + p : Quick file search
 
 ## Git
-- ctrl + g : Open git panel
 - ctrl + shift + g : Open git panel in split mode
 - ctrl + shift + c : Commit changes
 - ctrl + shift + p : Push changes
