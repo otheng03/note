@@ -22,6 +22,7 @@
 - ctrl + p : Quick file search
 
 ## Git
+### How to commit and push?
 - ctrl + shift + g : Open git panel in split mode
   - ctrl + Enter : Commit changes
     - ctrl + Enter : Confirm commit message and commit
