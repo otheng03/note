@@ -23,6 +23,5 @@
 
 ## Git
 - ctrl + shift + g : Open git panel in split mode
-- ctrl + shift + c : Commit changes
-- ctrl + shift + p : Push changes
-- ctrl + shift + o : Pull changes
+  - ctrl + Enter : Commit changes
+- ctrl + shift + p --> commit --> ctrl + Enter
