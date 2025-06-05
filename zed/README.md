@@ -24,4 +24,5 @@
 ## Git
 - ctrl + shift + g : Open git panel in split mode
   - ctrl + Enter : Commit changes
+    - ctrl + Enter : Confirm commit message and commit
 - ctrl + shift + p --> commit --> ctrl + Enter
