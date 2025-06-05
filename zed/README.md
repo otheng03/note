@@ -20,3 +20,10 @@
 ## Common
 - shift + escape : To fullscreen the current panel
 - ctrl + p : Quick file search
+
+## Git
+- ctrl + g : Open git panel
+- ctrl + shift + g : Open git panel in split mode
+- ctrl + shift + c : Commit changes
+- ctrl + shift + p : Push changes
+- ctrl + shift + o : Pull changes
