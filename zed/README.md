@@ -9,6 +9,7 @@
 ## Editor tab
 - ctrl + shift + t : Open editor tab
 - alt + Number : Select a file by its position in the tab list
+- ctrl + Enter : Interact with Agent
 
 ## Agent panel
 - ctrl + alt + b OR ctrl + (shift) + ? : Open agent panel
@@ -18,3 +19,4 @@
 
 ## Common
 - shift + escape : To fullscreen the current panel
+- ctrl + p : Quick file search
