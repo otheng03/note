@@ -1,4 +1,6 @@
 # Shortcuts
 
-- command f8 : Toggle line breakpoint
-- option f10 : When degugging, this jumps to the current execution line
+- command F8 : Toggle line breakpoint
+- option F10 : When degugging, this jumps to the current execution line
+- shift command A (or double shift) : Search Action
+  - For example, Search Action -> Preview
