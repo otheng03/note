@@ -59,5 +59,36 @@ Backup and DR:
   Running DRs            - 0
 
 Client time: 10/02/25 00:45:12
+```
+
+## Simple Transactions
+
+### Basic read-write transaction:
+
 
 ```
+fdb> begin
+Transaction started
+fdb> set key1 "value1"
+fdb> set key2 "value2"
+fdb> get key1
+`key1' is `value1'
+fdb> commit
+Committed (308194263)
+```
+
+### Transaction with rollback:
+
+
+```
+fdb> begin
+Transaction started
+fdb> set testkey "temporary"
+fdb> get testkey
+`testkey' is `temporary'
+fdb> rollback
+Transaction rolled back
+fdb> get testkey
+`testkey': not found
+```
+
