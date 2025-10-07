@@ -9,6 +9,9 @@ persistence.
 
 ## Core Architecture
 
+<img width="2083" height="2708" alt="image" src="https://github.com/user-attachments/assets/75c91a40-a4bf-40c3-ba5e-ef833a122522" />
+ref: https://apple.github.io/foundationdb/architecture.html
+
 ### Purpose and Responsibilities
 
 Transaction Logs have two primary responsibilities:
