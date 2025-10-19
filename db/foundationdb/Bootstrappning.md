@@ -46,3 +46,15 @@
 
 (8) At this time, the new transaction system becomes ready to accept client transactions
 ```
+
+# Reconfiguration
+
+Whenever there is a failure in the TS or LS, or a database configuration change.
+
+The Sequencer monotors Proxies, Resolvers, and LogServers.
+
+If any on of the monitored processes fails or the database configuration changes, the Sequencer process terminates.
+
+ClusterController detects the Sequencer failures then recruit a new Sequencer. (=Above bootstrapping)
+
+In this way, transaction processing is divided into epochs.
