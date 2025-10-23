@@ -92,3 +92,25 @@ fdb> get testkey
 `testkey': not found
 ```
 
+# How to build fdb from source on my Mac
+
+```
+$ cd <FDB_SOURCE_DIR>
+$ mkdir build
+$ cd build
+$ cmake -G Ninja <FDB_SOURCE_DIR>
+$ ninja
+```
+
+Failed to compile and replaced `cmake_minimum_required` with 3.5 in `build/toml11Project-prefix/src/toml11Project/CMakeLists.txt` as below:
+
+```
+cmake_minimum_required(VERSION 3.5)
+```
+
+Retry build
+
+```
+$ cmake -G Ninja <FDB_SOURCE_DIR>
+$ ninja
+```
