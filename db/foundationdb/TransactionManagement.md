@@ -87,3 +87,63 @@ If both reads timed out, the client gets a retryable error to restart the transa
 Because the log data is already durable on LogServers, 
 StorageServers can buffer updates in memory and only persist batches of data to disks with a longer delay,
 thus improving I/O efficiency by coalescing the updates.
+
+## **Control Plane Components**
+### **Coordinators**
+- **`fdbserver/Coordination.actor.cpp`** - Coordination logic
+- **`fdbserver/LeaderElection.actor.cpp`** - Leader election among coordinators
+- **`fdbserver/CoordinatedState.actor.cpp`** - Coordinated state management
+
+### **Cluster Controller**
+- **`fdbserver/ClusterController.actor.cpp`** - Main cluster controller implementation, manages recruitment of all roles and monitors cluster health
+
+### **Data Distributor**
+- **`fdbserver/DataDistribution.actor.cpp`** - Main data distribution logic
+- **`fdbserver/DDTeamCollection.actor.cpp`** - Team building and management
+- **`fdbserver/DDRelocationQueue.actor.cpp`** - Manages shard movement queue
+- **`fdbserver/DDShardTracker.actor.cpp`** - Tracks individual shard metrics
+- **`fdbserver/DDTxnProcessor.actor.cpp`** - Transaction processing for DD
+- **`fdbserver/include/fdbserver/DataDistributorInterface.h`** - Interface definition
+
+### **Ratekeeper**
+- **`fdbserver/Ratekeeper.actor.cpp`** - Rate limiting and throttling logic to prevent storage servers from being overwhelmed
+
+## **Data Plane - Transaction System (TS) Components**
+### **Proxies**
+- **`fdbserver/CommitProxyServer.actor.cpp`** - Handles write transactions (path 2, 3.1, 3.2 in diagram)
+- **`fdbserver/GrvProxyServer.actor.cpp`** - Handles get read version requests (path 1 in diagram)
+- **`fdbserver/include/fdbserver/ProxyCommitData.actor.h`** - Shared proxy data structures
+
+### **Sequencer** (within Master/Proxy)
+The sequencer functionality is integrated into:
+- **`fdbserver/masterserver.actor.cpp`** - The master server assigns commit versions (sequencing)
+- **`fdbserver/CommitProxyServer.actor.cpp`** - Proxies obtain versions from master for sequencing commits
+
+### **Resolvers**
+- **`fdbserver/Resolver.actor.cpp`** - Detects transaction conflicts (path 3.2 in diagram)
+- **`fdbserver/include/fdbserver/ResolverInterface.h`** - Interface definition
+
+## **Data Plane - Log System (LS) Components**
+### **LogServers (TLog)**
+- **`fdbserver/TLogServer.actor.cpp`** - Main transaction log server implementation (path 2, 3.3 in diagram)
+- **`fdbserver/LogSystem.cpp`** - Log system abstraction
+- **`fdbserver/LogSystemConfig.cpp`** - Log system configuration
+- **`fdbserver/LogSystemPeekCursor.actor.cpp`** - Reading from logs
+
+## **Data Plane - Storage System (SS) Components**
+### **StorageServers**
+- **`fdbserver/storageserver.actor.cpp`** - Main storage server implementation (handles reads and writes, paths 2 and 3)
+- **`fdbserver/StorageMetrics.actor.cpp`** - Storage metrics tracking
+- **`fdbserver/IKeyValueStore.cpp`** - Key-value store interface
+- **`fdbserver/KeyValueStoreMemory.actor.cpp`** - Memory-based storage engine
+- **`fdbserver/KeyValueStoreSQLite.actor.cpp`** - SQLite storage engine
+- **`fdbserver/KeyValueStoreRocksDB.actor.cpp`** - RocksDB storage engine
+
+## **Master Server**
+- **`fdbserver/masterserver.actor.cpp`** - Coordinates recovery and manages the transaction system, provides commit versions to proxies
+
+## **Worker Process**
+- **`fdbserver/worker.actor.cpp`** - Worker process that can host any role (storage, log, proxy, etc.)
+- **`fdbserver/fdbserver.actor.cpp`** - Main entry point for fdbserver
+
+The architecture follows the flow shown in your diagram: clients interact with proxies for reads and commits, proxies coordinate with resolvers for conflict detection, logs persist mutations, and storage servers provide durable storage with asynchronous replication between log and storage layers.
