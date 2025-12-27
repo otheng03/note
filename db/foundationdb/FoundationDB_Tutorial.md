@@ -108,6 +108,13 @@ Failed to compile and replaced `cmake_minimum_required` with 3.5 in `build/toml1
 cmake_minimum_required(VERSION 3.5)
 ```
 
+[339/1190] Linking CXX shared library lib/libfdb_c.dylib
+FAILED: [code=1] lib/libfdb_c.dylib 
+
+```
+cmake -G Ninja -DCMAKE_CXX_FLAGS=-Wl,-ld_classic ..
+```
+
 Retry build
 
 ```
