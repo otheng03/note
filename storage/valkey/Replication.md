@@ -62,6 +62,16 @@ commands.def:
 {MAKE_CMD("psync","An internal command used in replication.",NULL,"2.8.0",CMD_DOC_NONE,NULL,NULL,"server",COMMAND_GROUP_SERVER,PSYNC_History,0,PSYNC_Tips,0,syncCommand,-3,CMD_NO_ASYNC_LOADING|CMD_ADMIN|CMD_NO_MULTI|CMD_NOSCRIPT,ACL_CATEGORY_ADMIN|ACL_CATEGORY_DANGEROUS|ACL_CATEGORY_SLOW,NULL,PSYNC_Keyspecs,0,NULL,2),.args=PSYNC_Args},
 ```
 
+client:
+```
+REPLCONF listening-port 41804
+REPLCONF ip-address 127.0.0.1
+REPLCONF capa eof
+REPLCONF capa psync2
+PSYNC ? -1
+```
+
+valkey-server:
 ```
 void syncCommand(client *c)
   int rdbSaveToReplicasSockets(int req, rdbSaveInfo *rsi)
