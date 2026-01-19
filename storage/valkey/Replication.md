@@ -74,6 +74,8 @@ PSYNC ? -1
 valkey-server:
 ```
 void syncCommand(client *c)
+
+int startBgsaveForReplication(int mincapa, int req) {
   int rdbSaveToReplicasSockets(int req, rdbSaveInfo *rsi)
     if ((childpid = serverFork(CHILD_TYPE_RDB)) == 0) {
       int rdbSaveRioWithEOFMark(int req, rio *rdb, int *error, rdbSaveInfo *rsi) {
