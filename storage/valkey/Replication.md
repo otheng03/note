@@ -236,72 +236,83 @@ int startBgsaveForReplication(int mincapa, int req) {
 ```
 
 ```C
-// Save MAGIC_STRING
-snprintf(magic, sizeof(magic), "VALKEY%03d", RDB_VERSION);
-if (rdbWriteRaw(rdb, magic, 9) == -1) goto werr;
-
-// Auxiliary fields, rdbSaveInfoAuxFields
-int redis_bits = (sizeof(void *) == 8) ? 64 : 32;
-int aof_base = (rdbflags & RDBFLAGS_AOF_PREAMBLE) != 0;
-
-/* Add a few fields about the state when the RDB was created. */
-if (rdbSaveAuxFieldStrStr(rdb, "valkey-ver", VALKEY_VERSION) == -1) return -1;
-if (rdbSaveAuxFieldStrInt(rdb, "redis-bits", redis_bits) == -1) return -1;
-if (rdbSaveAuxFieldStrInt(rdb, "ctime", time(NULL)) == -1) return -1;
-if (rdbSaveAuxFieldStrInt(rdb, "used-mem", zmalloc_used_memory()) == -1) return -1;
-
-/* Handle saving options that generate aux fields. */
-if (rsi) {
-    if (rdbSaveAuxFieldStrInt(rdb, "repl-stream-db", rsi->repl_stream_db) == -1) return -1;
-    if (rdbSaveAuxFieldStrStr(rdb, "repl-id", server.replid) == -1) return -1;
-    if (rdbSaveAuxFieldStrInt(rdb, "repl-offset", server.primary_repl_offset) == -1) return -1;
-}
-if (rdbSaveAuxFieldStrInt(rdb, "aof-base", aof_base) == -1) return -1;
-
-/* Iterate over modules, and trigger rdb aux saving for the ones modules types who asked for it. */
-rdbSaveModulesAux(rdb, VALKEYMODULE_AUX_BEFORE_RDB)
-rdbSaveFunctions(rdb)
-/* Save the active slot imports to the RDB file. The import job name and the slot ranges are saved.
- * Ref: Prevent exposure of importing keys on replicas during atomic slot migration. https://github.com/valkey-io/valkey/pull/2635 */
-clusterRDBSaveSlotImports(rdb)
-for (j = 0; j < server.dbnum; j++) {
-    rdbSaveDb(rdb, j, rdbflags, &key_counter)
-        rdbSaveType(rdb, RDB_OPCODE_SELECTDB)
-        rdbSaveLen(rdb, dbid))
-        rdbSaveType(rdb, RDB_OPCODE_RESIZEDB)
-        rdbSaveLen(rdb, db_size)
-        rdbSaveLen(rdb, expires_size)
-        while (kvstoreIteratorNext(kvs_it, &next)) {
-            /* Save slot info. */
-            if (server.cluster_enabled && curr_slot != last_slot)
-                rdbSaveAuxFieldStrStr(rdb, "slot-info", slot_info)
-            /* Save a key-value pair, with expire time, type, key, value. */
-            rdbSaveKeyValuePair(rdb, &key, o, expire, dbid)
-                /* Save the expire time */
-                if (expiretime != -1) {
-                    rdbSaveType(rdb, RDB_OPCODE_EXPIRETIME_MS)
-                    rdbSaveMillisecondTime(rdb, expiretime)
-                }
-                /* Save the LRU info. */
-                if (savelru) {
-                    rdbSaveType(rdb, RDB_OPCODE_IDLE)
-                    rdbSaveLen(rdb, idletime) == -1)
-                }
-                /* Save the LFU info. */
-                if (savelfu) {
-                    rdbSaveType(rdb, RDB_OPCODE_FREQ) == -1) return -1;
-                    rdbWriteRaw(rdb, buf, 1) == -1) return -1;
-                }
-                /* Save type, key, value */
-                rdbSaveObjectType(rdb, val
-                rdbSaveStringObject(rdb, key
-                rdbSaveObject(rdb, val, key, dbid)
+rdbSaveRio {
+    // Save MAGIC_STRING
+    snprintf(magic, sizeof(magic), "VALKEY%03d", RDB_VERSION);
+    if (rdbWriteRaw(rdb, magic, 9) == -1) goto werr;
+    
+    // Auxiliary fields, rdbSaveInfoAuxFields
+    rdbSaveInfoAuxFields(rdb, rdbflags, rsi) {
+        /* Add a few fields about the state when the RDB was created. */
+        if (rdbSaveAuxFieldStrStr(rdb, "valkey-ver", VALKEY_VERSION) == -1) return -1;
+        if (rdbSaveAuxFieldStrInt(rdb, "redis-bits", redis_bits) == -1) return -1;
+        if (rdbSaveAuxFieldStrInt(rdb, "ctime", time(NULL)) == -1) return -1;
+        if (rdbSaveAuxFieldStrInt(rdb, "used-mem", zmalloc_used_memory()) == -1) return -1;
+        
+        /* Handle saving options that generate aux fields. */
+        if (rsi) {
+            if (rdbSaveAuxFieldStrInt(rdb, "repl-stream-db", rsi->repl_stream_db) == -1) return -1;
+            if (rdbSaveAuxFieldStrStr(rdb, "repl-id", server.replid) == -1) return -1;
+            if (rdbSaveAuxFieldStrInt(rdb, "repl-offset", server.primary_repl_offset) == -1) return -1;
         }
-}
-rdbSaveModulesAux(rdb, VALKEYMODULE_AUX_AFTER_RDB)
-/* EOF opcode */
-rdbSaveType(rdb, RDB_OPCODE_EOF)
-/* CRC64 checksum. It will be zero if checksum computation is disabled, the
- * loading code skips the check in this case. */
-rioWrite(rdb, &cksum, 8)
+        if (rdbSaveAuxFieldStrInt(rdb, "aof-base", aof_base) == -1) return -1;
+
+        /* Handle additional dynamic aux fields */
+        if (rdbAuxFields != NULL) {
+            dictInitIterator(&di, rdbAuxFields);
+            while ((de = dictNext(&di)) != NULL) {
+                rdbSaveAuxFieldStrStr(rdb, dictGetKey(de), s)
+            }
+        }
+    }
+
+    /* Iterate over modules, and trigger rdb aux saving for the ones modules types who asked for it. */
+    rdbSaveModulesAux(rdb, VALKEYMODULE_AUX_BEFORE_RDB)
+
+    /* save functions */
+    rdbSaveFunctions(rdb)
+
+    /* Save the active slot imports to the RDB file. The import job name and the slot ranges are saved.
+     * Ref: Prevent exposure of importing keys on replicas during atomic slot migration. https://github.com/valkey-io/valkey/pull/2635 */
+    clusterRDBSaveSlotImports(rdb)
+    for (j = 0; j < server.dbnum; j++) {
+        rdbSaveDb(rdb, j, rdbflags, &key_counter)
+            rdbSaveType(rdb, RDB_OPCODE_SELECTDB)
+            rdbSaveLen(rdb, dbid))
+            rdbSaveType(rdb, RDB_OPCODE_RESIZEDB)
+            rdbSaveLen(rdb, db_size)
+            rdbSaveLen(rdb, expires_size)
+            while (kvstoreIteratorNext(kvs_it, &next)) {
+                /* Save slot info. */
+                if (server.cluster_enabled && curr_slot != last_slot)
+                    rdbSaveAuxFieldStrStr(rdb, "slot-info", slot_info)
+                /* Save a key-value pair, with expire time, type, key, value. */
+                rdbSaveKeyValuePair(rdb, &key, o, expire, dbid)
+                    /* Save the expire time */
+                    if (expiretime != -1) {
+                        rdbSaveType(rdb, RDB_OPCODE_EXPIRETIME_MS)
+                        rdbSaveMillisecondTime(rdb, expiretime)
+                    }
+                    /* Save the LRU info. */
+                    if (savelru) {
+                        rdbSaveType(rdb, RDB_OPCODE_IDLE)
+                        rdbSaveLen(rdb, idletime) == -1)
+                    }
+                    /* Save the LFU info. */
+                    if (savelfu) {
+                        rdbSaveType(rdb, RDB_OPCODE_FREQ) == -1) return -1;
+                        rdbWriteRaw(rdb, buf, 1) == -1) return -1;
+                    }
+                    /* Save type, key, value */
+                    rdbSaveObjectType(rdb, val
+                    rdbSaveStringObject(rdb, key
+                    rdbSaveObject(rdb, val, key, dbid)
+            }
+    }
+    rdbSaveModulesAux(rdb, VALKEYMODULE_AUX_AFTER_RDB)
+    /* EOF opcode */
+    rdbSaveType(rdb, RDB_OPCODE_EOF)
+    /* CRC64 checksum. It will be zero if checksum computation is disabled, the
+     * loading code skips the check in this case. */
+    rioWrite(rdb, &cksum, 8)
 ```
