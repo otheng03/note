@@ -236,7 +236,7 @@ int startBgsaveForReplication(int mincapa, int req) {
 ```
 
 ```C
-// Sace MAGIC_STRING
+// Save MAGIC_STRING
 snprintf(magic, sizeof(magic), "VALKEY%03d", RDB_VERSION);
 if (rdbWriteRaw(rdb, magic, 9) == -1) goto werr;
 
