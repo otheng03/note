@@ -104,3 +104,160 @@ int startBgsaveForReplication(int mincapa, int req) {
     }
 ```
 
+# rdbSaveRio
+
+```
+⏺ RDBFLAGS Explained in Detail
+
+  These flags control how RDB data is saved or loaded depending on the context (normal
+  persistence, replication, AOF, debugging). They're bitmask flags that can be combined with |.
+
+  Visual Overview
+
+                           ┌─────────────────────────────────────────────┐
+                           │           RDB Save/Load Contexts            │
+                           └─────────────────────────────────────────────┘
+                                              │
+          ┌───────────────────┬───────────────┼───────────────┬──────────────────┐
+          ▼                   ▼               ▼               ▼                  ▼
+     ┌─────────┐      ┌──────────────┐  ┌───────────┐  ┌─────────────┐   ┌────────────┐
+     │ BGSAVE  │      │ AOF Rewrite  │  │   SYNC    │  │DEBUG RELOAD │   │  Startup   │
+     │(to disk)│      │  (preamble)  │  │(to replica│  │   (merge)   │   │ (from disk)│
+     └────┬────┘      └──────┬───────┘  └─────┬─────┘  └──────┬──────┘   └─────┬──────┘
+          │                  │                │               │                │
+     RDBFLAGS_NONE    AOF_PREAMBLE      REPLICATION      ALLOW_DUP         FEED_REPL
+                                       + KEEP_CACHE                       (if primary)
+
+  ---
+  Flag-by-Flag Breakdown
+
+  RDBFLAGS_NONE (0)
+
+  Standard RDB save to disk (BGSAVE, SAVE). No special handling.
+
+  ---
+  RDBFLAGS_AOF_PREAMBLE (1 << 0)
+
+  When: RDB is embedded at the start of an AOF file for faster loading.
+
+  Effects:
+  - Sets aof-base AUX field to 1 (line rdb.c:1244)
+  - Progress logs say "AOF rewrite" instead of "RDB" (rdb.c:1372)
+  - Modules receive SUBEVENT_LOADING_AOF_START instead of LOADING_RDB_START
+  - Skips deleting expired keys during load (rdb.c:3441) — AOF commands after the preamble handle
+  expiration properly
+
+  AOF file structure with preamble:
+  ┌───────────────────────────┐
+  │  RDB snapshot (preamble)  │  ← RDBFLAGS_AOF_PREAMBLE
+  ├───────────────────────────┤
+  │  AOF commands...          │
+  │  SET foo bar              │
+  │  INCR counter             │
+  └───────────────────────────┘
+
+  ---
+  RDBFLAGS_REPLICATION (1 << 1)
+
+  When: Full sync from primary to replica.
+
+  Effects:
+  - Includes transient cluster state like open slots (cluster_legacy.c:8066) — this data shouldn't
+   persist to disk but must transfer during sync
+  - Modules receive SUBEVENT_LOADING_REPL_START
+  - Often combined with KEEP_CACHE since the replica will read the file immediately
+
+  // replication.c:976 — generating RDB for replica
+  rdbSaveBackground(req, server.rdb_filename, rsiptr,
+                    RDBFLAGS_REPLICATION | RDBFLAGS_KEEP_CACHE);
+
+  ---
+  RDBFLAGS_ALLOW_DUP (1 << 2)
+
+  When: DEBUG RELOAD MERGE — reload RDB without flushing existing keys.
+
+  Effects:
+  - Duplicate keys don't cause errors; they overwrite existing ones (rdb.c:3465)
+  - Functions/libraries with same name are allowed (rdb.c:3055)
+
+  Before:  DB has {foo: "old", bar: "existing"}
+  RDB has: {foo: "new", baz: "added"}
+  After:   DB has {foo: "new", bar: "existing", baz: "added"}
+
+  ---
+  RDBFLAGS_FEED_REPL (1 << 3)
+
+  When: Primary loads RDB at startup while replicas are connected.
+
+  Effects:
+  - As keys load, synthesize replication commands so replicas stay in sync
+  - Expired keys during load generate DEL commands to replicas (rdb.c:3442)
+
+  // server.c:6927 — startup with connected replicas
+  if (hasActiveReplicas()) {
+      createReplicationBacklog();
+      rdb_flags |= RDBFLAGS_FEED_REPL;  // Replicate loading to replicas
+  }
+
+  ---
+  RDBFLAGS_KEEP_CACHE (1 << 4)
+
+  When: The RDB file will be read again soon (replication, shutdown-restart).
+
+  Effects:
+  - Skips posix_fadvise(DONTNEED) which would evict file data from OS page cache
+  - Normally after writing an RDB, Valkey tells the OS "I'm done with this, you can reclaim the
+  memory" — this flag prevents that
+
+  // rdb.c:1554 — during save
+  if (!(rdbflags & RDBFLAGS_KEEP_CACHE))
+      rioSetReclaimCache(&rdb, 1);  // Tell OS to drop pages after writing
+
+  // replication.c:976 — keep cache for imminent replica read
+  rdbSaveBackground(..., RDBFLAGS_REPLICATION | RDBFLAGS_KEEP_CACHE);
+
+  ---
+  Common Flag Combinations
+  ┌───────────────────────┬────────────────────────────────────────────┐
+  │       Scenario        │                   Flags                    │
+  ├───────────────────────┼────────────────────────────────────────────┤
+  │ Normal BGSAVE         │ RDBFLAGS_NONE                              │
+  ├───────────────────────┼────────────────────────────────────────────┤
+  │ AOF rewrite           │ RDBFLAGS_AOF_PREAMBLE                      │
+  ├───────────────────────┼────────────────────────────────────────────┤
+  │ Full sync to replica  │ RDBFLAGS_REPLICATION | RDBFLAGS_KEEP_CACHE │
+  ├───────────────────────┼────────────────────────────────────────────┤
+  │ Startup with replicas │ RDBFLAGS_FEED_REPL                         │
+  ├───────────────────────┼────────────────────────────────────────────┤
+  │ DEBUG RELOAD MERGE    │ RDBFLAGS_ALLOW_DUP                         │
+  ├───────────────────────┼────────────────────────────────────────────┤
+  │ Shutdown save         │ RDBFLAGS_KEEP_CACHE (restart expected)     │
+  └───────────────────────┴────────────────────────────────────────────┘
+```
+
+```C
+// Sace MAGIC_STRING
+snprintf(magic, sizeof(magic), "VALKEY%03d", RDB_VERSION);
+if (rdbWriteRaw(rdb, magic, 9) == -1) goto werr;
+
+// Auxiliary fields, rdbSaveInfoAuxFields
+int redis_bits = (sizeof(void *) == 8) ? 64 : 32;
+int aof_base = (rdbflags & RDBFLAGS_AOF_PREAMBLE) != 0;
+
+/* Add a few fields about the state when the RDB was created. */
+if (rdbSaveAuxFieldStrStr(rdb, "valkey-ver", VALKEY_VERSION) == -1) return -1;
+if (rdbSaveAuxFieldStrInt(rdb, "redis-bits", redis_bits) == -1) return -1;
+if (rdbSaveAuxFieldStrInt(rdb, "ctime", time(NULL)) == -1) return -1;
+if (rdbSaveAuxFieldStrInt(rdb, "used-mem", zmalloc_used_memory()) == -1) return -1;
+
+/* Handle saving options that generate aux fields. */
+if (rsi) {
+    if (rdbSaveAuxFieldStrInt(rdb, "repl-stream-db", rsi->repl_stream_db) == -1) return -1;
+    if (rdbSaveAuxFieldStrStr(rdb, "repl-id", server.replid) == -1) return -1;
+    if (rdbSaveAuxFieldStrInt(rdb, "repl-offset", server.primary_repl_offset) == -1) return -1;
+}
+if (rdbSaveAuxFieldStrInt(rdb, "aof-base", aof_base) == -1) return -1;
+
+TBD
+
+```
