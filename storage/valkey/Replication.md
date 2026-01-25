@@ -276,7 +276,7 @@ rdbSaveRio {
      * Ref: Prevent exposure of importing keys on replicas during atomic slot migration. https://github.com/valkey-io/valkey/pull/2635 */
     clusterRDBSaveSlotImports(rdb)
     for (j = 0; j < server.dbnum; j++) {
-        rdbSaveDb(rdb, j, rdbflags, &key_counter)
+        rdbSaveDb(rdb, j, rdbflags, &key_counter) {
             rdbSaveType(rdb, RDB_OPCODE_SELECTDB)
             rdbSaveLen(rdb, dbid))
             rdbSaveType(rdb, RDB_OPCODE_RESIZEDB)
@@ -287,7 +287,7 @@ rdbSaveRio {
                 if (server.cluster_enabled && curr_slot != last_slot)
                     rdbSaveAuxFieldStrStr(rdb, "slot-info", slot_info)
                 /* Save a key-value pair, with expire time, type, key, value. */
-                rdbSaveKeyValuePair(rdb, &key, o, expire, dbid)
+                rdbSaveKeyValuePair(rdb, &key, o, expire, dbid) {
                     /* Save the expire time */
                     if (expiretime != -1) {
                         rdbSaveType(rdb, RDB_OPCODE_EXPIRETIME_MS)
@@ -307,7 +307,9 @@ rdbSaveRio {
                     rdbSaveObjectType(rdb, val
                     rdbSaveStringObject(rdb, key
                     rdbSaveObject(rdb, val, key, dbid)
+                }
             }
+        }
     }
     rdbSaveModulesAux(rdb, VALKEYMODULE_AUX_AFTER_RDB)
     /* EOF opcode */
