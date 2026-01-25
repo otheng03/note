@@ -267,7 +267,38 @@ rdbSaveFunctions(rdb)
  * Ref: Prevent exposure of importing keys on replicas during atomic slot migration. https://github.com/valkey-io/valkey/pull/2635 */
 clusterRDBSaveSlotImports(rdb)
 for (j = 0; j < server.dbnum; j++) {
-    if (rdbSaveDb(rdb, j, rdbflags, &key_counter) == -1) goto werr;
+    rdbSaveDb(rdb, j, rdbflags, &key_counter)
+        rdbSaveType(rdb, RDB_OPCODE_SELECTDB)
+        rdbSaveLen(rdb, dbid))
+        rdbSaveType(rdb, RDB_OPCODE_RESIZEDB)
+        rdbSaveLen(rdb, db_size)
+        rdbSaveLen(rdb, expires_size)
+        while (kvstoreIteratorNext(kvs_it, &next)) {
+            /* Save slot info. */
+            if (server.cluster_enabled && curr_slot != last_slot)
+                rdbSaveAuxFieldStrStr(rdb, "slot-info", slot_info)
+            /* Save a key-value pair, with expire time, type, key, value. */
+            rdbSaveKeyValuePair(rdb, &key, o, expire, dbid)
+                /* Save the expire time */
+                if (expiretime != -1) {
+                    rdbSaveType(rdb, RDB_OPCODE_EXPIRETIME_MS)
+                    rdbSaveMillisecondTime(rdb, expiretime)
+                }
+                /* Save the LRU info. */
+                if (savelru) {
+                    rdbSaveType(rdb, RDB_OPCODE_IDLE)
+                    rdbSaveLen(rdb, idletime) == -1)
+                }
+                /* Save the LFU info. */
+                if (savelfu) {
+                    rdbSaveType(rdb, RDB_OPCODE_FREQ) == -1) return -1;
+                    rdbWriteRaw(rdb, buf, 1) == -1) return -1;
+                }
+                /* Save type, key, value */
+                rdbSaveObjectType(rdb, val
+                rdbSaveStringObject(rdb, key
+                rdbSaveObject(rdb, val, key, dbid)
+        }
 }
 rdbSaveModulesAux(rdb, VALKEYMODULE_AUX_AFTER_RDB)
 /* EOF opcode */
