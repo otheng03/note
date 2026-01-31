@@ -320,7 +320,7 @@ rdbSaveRio {
 ```
 
 ```C
-rioLoadRio
+rdbLoadRio
   // Load an RDB file from the rio stream 'rdb'.
   rdbLoadRioWithLoadingCtxScopedRdb(rio *rdb, int rdbflags, rdbSaveInfo *rsi, rdbLoadingCtx *rdb_loading_ctx)
     // Read Magic String
