@@ -318,3 +318,149 @@ rdbSaveRio {
      * loading code skips the check in this case. */
     rioWrite(rdb, &cksum, 8)
 ```
+
+```C
+rioLoadRio
+  // Load an RDB file from the rio stream 'rdb'.
+  rdbLoadRioWithLoadingCtxScopedRdb(rio *rdb, int rdbflags, rdbSaveInfo *rsi, rdbLoadingCtx *rdb_loading_ctx)
+    // Read Magic String
+    rioRead(rdb, buf, 9)
+    buf[9] = '\0';
+    if (memcmp(buf, "REDIS0", 6) == 0) {
+        is_redis_magic = true;
+    } else if (memcmp(buf, "VALKEY", 6) == 0) {
+        is_valkey_magic = true;
+    }
+    // Read Version
+    rdbver = atoi(buf + 6);
+    rdbIsVersionAccepted(rdbver, is_valkey_magic, is_redis_magic) {
+      if (rdbver < 1) return false;
+      if (is_valkey_magic && rdbver <= RDB_FOREIGN_VERSION_MAX) return false;
+      if (is_redis_magic && rdbver > RDB_FOREIGN_VERSION_MAX) return false;
+      if (server.rdb_version_check == RDB_VERSION_CHECK_STRICT) {
+          if (rdbver > RDB_VERSION) return false; /* future version */
+          if (rdbIsForeignVersion(rdbver)) return false;
+      }
+      return true;
+    }
+
+    type = rdbLoadType(rdb)
+    /* Safeguard for unknown foreign opcode interpretations. */
+    if (is_redis_magic && type >= RDB_FOREIGN_TYPE_MIN && type <= RDB_FOREIGN_TYPE_MAX) {
+      return C_ERR;
+    }
+
+    if (type == RDB_OPCODE_EXPIRETIME) {
+      expiretime = rdbLoadTime(rdb);
+      expiretime *= 1000;
+    } else if (type == RDB_OPCODE_EXPIRETIME_MS) {
+      expiretime = rdbLoadMillisecondTime(rdb, rdbver);
+    } else if (type == RDB_OPCODE_FREQ) {
+      if (rioRead(rdb, &byte, 1) == 0) goto eoferr;
+      lfu_freq = byte;
+    } else if (type == RDB_OPCODE_IDLE) {
+      if ((qword = rdbLoadLen(rdb, NULL)) == RDB_LENERR) goto eoferr;
+      lru_idle = qword;
+    } else if (type == RDB_OPCODE_EOF) {
+      break;
+    } else if (type == RDB_OPCODE_SELECTDB) {
+      /* SELECTDB: Select the specified database. */
+      if ((dbid = rdbLoadLen(rdb, NULL)) == RDB_LENERR) goto eoferr;
+      if (rdb_loading_ctx->dbarray[dbid] == NULL) {
+        rdb_loading_ctx->dbarray[dbid] = createDatabase(dbid);
+      }
+      db = rdb_loading_ctx->dbarray[dbid];
+    } else if (type == RDB_OPCODE_RESIZEDB) {
+      if ((db_size = rdbLoadLen(rdb, NULL)) == RDB_LENERR) goto eoferr;
+      if ((expires_size = rdbLoadLen(rdb, NULL)) == RDB_LENERR) goto eoferr;
+      should_expand_db = 1;
+    } else if (type == RDB_OPCODE_SLOT_INFO) {
+      uint64_t slot_id, slot_size, expires_slot_size;
+      if ((slot_id = rdbLoadLen(rdb, NULL)) == RDB_LENERR) goto eoferr;
+      if ((slot_size = rdbLoadLen(rdb, NULL)) == RDB_LENERR) goto eoferr;
+      if ((expires_slot_size = rdbLoadLen(rdb, NULL)) == RDB_LENERR) goto eoferr;
+      if (server.cluster_enabled && slot_id < CLUSTER_SLOTS) {
+        if (slot_size) kvstoreHashtableExpand(db->keys, slot_id, slot_size);
+        if (expires_slot_size) kvstoreHashtableExpand(db->expires, slot_id, expires_slot_size);
+        should_expand_db = 0;
+      }
+    } else if (type == RDB_OPCODE_SLOT_IMPORT) {
+      if (clusterRDBLoadSlotImport(rdb) == C_ERR) goto eoferr;
+    } else if (type == RDB_OPCODE_AUX) {
+            /* AUX: generic string-string fields. Use to add state to RDB
+             * which is backward compatible. Implementations of RDB loading
+             * are required to skip AUX fields they don't understand.
+             *
+             * An AUX field is composed of two strings: key and value. */
+            if ((auxkey = rdbLoadStringObject(rdb)) == NULL) goto eoferr;
+            if ((auxval = rdbLoadStringObject(rdb)) == NULL) {
+                decrRefCount(auxkey);
+                goto eoferr;
+            }
+
+            if (((char *)auxkey->ptr)[0] == '%') {
+                serverLog(LL_NOTICE, "RDB '%s': %s", (char *)auxkey->ptr, (char *)auxval->ptr);
+            } else if (!strcasecmp(auxkey->ptr, "repl-stream-db")) {
+                if (rsi) rsi->repl_stream_db = atoi(auxval->ptr);
+            } else if (!strcasecmp(auxkey->ptr, "repl-id")) {
+                if (rsi && sdslen(auxval->ptr) == CONFIG_RUN_ID_SIZE) {
+                    memcpy(rsi->repl_id, auxval->ptr, CONFIG_RUN_ID_SIZE + 1);
+                    rsi->repl_id_is_set = 1;
+                }
+            } else if (!strcasecmp(auxkey->ptr, "repl-offset")) {
+                if (rsi) rsi->repl_offset = strtoll(auxval->ptr, NULL, 10);
+            } else if (!strcasecmp(auxkey->ptr, "lua")) {
+                /* Won't load the script back in memory anymore. */
+            } else if (!strcasecmp(auxkey->ptr, "redis-ver")) {
+                serverLog(LL_NOTICE, "Loading RDB produced by Redis version %s", (char *)auxval->ptr);
+            } else if (!strcasecmp(auxkey->ptr, "valkey-ver")) {
+                serverLog(LL_NOTICE, "Loading RDB produced by Valkey version %s", (char *)auxval->ptr);
+            } else if (!strcasecmp(auxkey->ptr, "ctime")) {
+                time_t age = time(NULL) - strtol(auxval->ptr, NULL, 10);
+                if (age < 0) age = 0;
+                serverLog(LL_NOTICE, "RDB age %ld seconds", (unsigned long)age);
+            } else if (!strcasecmp(auxkey->ptr, "used-mem")) {
+                long long usedmem = strtoll(auxval->ptr, NULL, 10);
+                serverLog(LL_NOTICE, "RDB memory usage when created %.2f Mb", (double)usedmem / (1024 * 1024));
+                server.loading_rdb_used_mem = usedmem;
+            } else if (!strcasecmp(auxkey->ptr, "aof-preamble")) {
+                long long haspreamble = strtoll(auxval->ptr, NULL, 10);
+                if (haspreamble) serverLog(LL_NOTICE, "RDB has an AOF tail");
+            } else if (!strcasecmp(auxkey->ptr, "aof-base")) {
+                long long isbase = strtoll(auxval->ptr, NULL, 10);
+                if (isbase) serverLog(LL_NOTICE, "RDB is base AOF");
+            } else if (!strcasecmp(auxkey->ptr, "redis-bits")) {
+                /* Just ignored. */
+            } else if (!strcasecmp(auxkey->ptr, "slot-info")) {
+                if (sscanf(auxval->ptr, "%i,%lu,%lu,%lu",
+                           &slot_id, &slot_size, &expires_slot_size,
+                           &keys_with_volatile_items_slot_size) < 3) {
+                    decrRefCount(auxkey);
+                    decrRefCount(auxval);
+                    goto eoferr;
+                }
+
+                if (server.cluster_enabled && slot_id >= 0 && slot_id < CLUSTER_SLOTS) {
+                    if (slot_size) kvstoreHashtableExpand(db->keys, slot_id, slot_size);
+                    if (expires_slot_size) kvstoreHashtableExpand(db->expires, slot_id, expires_slot_size);
+                    if (keys_with_volatile_items_slot_size) {
+                        kvstoreHashtableExpand(db->keys_with_volatile_items,
+                                               slot_id,
+                                               keys_with_volatile_items_slot_size);
+                    }
+                    should_expand_db = 0;
+                }
+            } else {
+                if (rdbAuxFields != NULL) {
+                    dictEntry *de = dictFind(rdbAuxFields, auxkey->ptr);
+                    if (de != NULL) {
+                        handled = 1;
+                        rdbAuxFieldCodec *codec = (rdbAuxFieldCodec *)dictGetVal(de);
+                        if (codec->decoder(rdbflags, auxval->ptr) == C_ERR) {
+                            goto eoferr;
+                        }
+                    }
+                }
+            }
+}
+```
