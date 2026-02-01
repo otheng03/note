@@ -494,6 +494,18 @@ rdbLoadRio
     if ((key = rdbGenericLoadStringObject(rdb, RDB_LOAD_SDS, NULL)) == NULL) goto eoferr;
     /* Read value */
     val = rdbLoadObject(type, rdb, key, db->id, &error);
+    
+    /* Add the new object in the hash table */
+    int added = dbAddRDBLoad(db, key, &val);
+
+    /* Verify the checksum if RDB version is >= 5 */
+    if (rdbver >= 5) {
+      uint64_t cksum, expected = rdb->cksum;
+      memrev64ifbe(&cksum);
+      if (cksum != expected) {
+        return C_ERR;
+      }
+    }
   }
 }
 ```
