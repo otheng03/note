@@ -567,3 +567,23 @@ replicationCron {
 	}
 }
 ```
+
+```C
+/* Avoid the primary to detect the replica is timing out while loading the
+ * RDB file in initial synchronization. We send a single newline character
+ * that is valid protocol but is guaranteed to either be sent entirely or
+ * not, since the byte is indivisible.
+ *
+ * The function is called in two contexts: while we flush the current
+ * data with emptyData(), and while we load the new data received as an
+ * RDB file from the primary. */
+void replicationSendNewlineToPrimary(void) {
+	static time_t newline_sent;
+	if (time(NULL) != newline_sent) {
+		newline_sent = time(NULL);
+		/* Pinging back in this stage is best-effort. */
+		if (server.repl_transfer_s) connWrite(server.repl_transfer_s, "\n", 1);
+	}
+}
+```
+
