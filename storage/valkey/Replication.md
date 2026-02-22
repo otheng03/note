@@ -77,6 +77,11 @@ void syncCommand(client *c)
 
 int startBgsaveForReplication(int mincapa, int req) {
   int rdbSaveToReplicasSockets(int req, rdbSaveInfo *rsi)
+    listRewind(server.replicas, &li);
+    while ((ln = listNext(&li))) {
+      replicationSetupReplicaForFullResync(replica, getPsyncInitialOffset())  // Before
+    }
+
     if ((childpid = serverFork(CHILD_TYPE_RDB)) == 0) {
       int rdbSaveRioWithEOFMark(int req, rio *rdb, int *error, rdbSaveInfo *rsi) {
         void startSaving(int rdbflags) {
@@ -235,6 +240,7 @@ int startBgsaveForReplication(int mincapa, int req) {
   └───────────────────────┴────────────────────────────────────────────┘
 ```
 
+**rdbSaveRio:**
 ```C
 rdbSaveRio {
     // Save MAGIC_STRING
@@ -319,6 +325,29 @@ rdbSaveRio {
     rioWrite(rdb, &cksum, 8)
 ```
 
+**Replication socket creation:**
+
+```C
+connSocketAcceptHandler {
+  *connCreateAcceptedSocket(int fd, void *priv) {
+    connection *conn = connCreateSocket();
+  }
+  acceptCommonHandler {
+    createClient(connection *conn) // Do not send anything related to '\n'
+  }
+  connAccept {
+    connSocketAccept(connection *conn, ConnectionCallbackFunc accept_handler) {
+      callHandler(conn, accept_handler) {
+        clientAcceptHandler(conn) {
+					// Do not send anything related to '\n'
+        }
+      }
+    }
+  }
+}
+```
+
+**rdbLoadRio:**
 ```C
 rdbLoadRio
   // Load an RDB file from the rio stream 'rdb'.
@@ -509,5 +538,32 @@ rdbLoadRio
       }
     }
   }
+}
+```
+
+# Where '\n' comes from?
+
+```C
+replicationCron {
+  /* Second, send a newline to all the replicas in pre-synchronization
+   * stage, that is, replicas waiting for the primary to create the RDB file.
+   *
+   * Also send the a newline to all the chained replicas we have, if we lost
+   * connection from our primary, to keep the replicas aware that their
+   * primary is online. This is needed since sub-replicas only receive proxied
+   * data from top-level primaries, so there is no explicit pinging in order
+   * to avoid altering the replication offsets. This special out of band
+   * pings (newlines) can be sent, they will have no effect in the offset.
+   *
+   * The newline will be ignored by the replica but will refresh the
+   * last interaction timer preventing a timeout. In this case we ignore the
+   * ping period and refresh the connection once per second since certain
+   * timeouts are set at a few seconds (example: PSYNC response). */
+	listRewind(server.replicas, &li);
+	while ((ln = listNext(&li))) {
+		if (is_presync) {
+			connWrite(replica->conn, "\n", 1);
+		}
+	}
 }
 ```
